@@ -1,0 +1,161 @@
+---
+- hosts: all
+  become: no
+  gather_facts: no
+  vars:
+
+  tasks:
+  - name: Set datacenter
+    set_fact:
+      datacenter: "{{lookup('env', 'DATACENTER') | trim }}"
+  #lines of code setting concur api url, report url and env proxy have been removed for this portfolio
+  - name: Scan {{ scan_server_ip }}
+    uri:
+      url: "{{ ssrs_api_url }}?ip_addresses={{ scan_server_ip }}"
+      method: POST
+      user: "{{ ssrs_username }}"
+      password: "{{ ssrs_password }}"
+      force_basic_auth: yes
+      validate_certs: no
+      status_code:
+        - 200
+        - 500
+        - 401
+    register: response
+    environment:
+      no_proxy: "{{ env_proxy }}"
+  - name: Prepare output
+    set_fact:
+      queue_status: |
+        {% if response.status == 500 %}
+        Scan already queued for ip {{ scan_server_ip }}, no new scan initiated.
+        {% else %}
+          {% if response.json.message == "no requested hosts could be scheduled for scanning" %}
+        No Scan initiated for ip {{ scan_server_ip }} , this ip either does not exist or you are not authorized to scan it.
+          {% else %}
+            {% if response.json.data %}
+              {% if response.json.data.scan %}
+        Scan of ip {{ scan_server_ip }} initiated successfully with Request ID {{ response.json.data.scan[0]['request-id'] }}.
+              {% endif %}
+            {% endif %}
+          {% endif %}
+        {% endif %}
+  - name: Show queue status
+    debug: msg={{ queue_status | trim }}
+
+  - name: Send slack message
+    slack:
+      token: "{{ slack_token }}"
+      msg: "{{ queue_status | trim }}"
+      channel: "{{ slack_channel }}"
+      validate_certs: False
+    environment:
+      http_proxy: "{{ lookup('env', 'PROXY') }}"
+      https_proxy: "{{ lookup('env', 'PROXY') }}"
+  - name: Single Scan Status {{ scan_server_ip }}
+    uri:
+      url: "{{ ssrs_api_url }}?ip_addresses={{ scan_server_ip }}"
+      method: GET
+      user: "{{ ssrs_username }}"
+      password: "{{ ssrs_password }}"
+      force_basic_auth: yes
+      validate_certs: no
+      status_code:
+        - 200
+        - 401
+        - 500
+    register: single_scan_status_response
+    environment:
+      no_proxy: "{{ env_proxy }}"
+  - name: Check if SSRS is down
+    when: single_scan_status_response.status == 500
+    slack:
+      token: "{{ slack_token }}"
+      msg: "There was an internal error with SSRS"
+      channel: "{{ slack_channel }}"
+      validate_certs: False
+    environment:
+      http_proxy: "{{ lookup('env', 'PROXY') }}"
+      https_proxy: "{{ lookup('env', 'PROXY') }}"
+  - name: End if SSRS is down
+    meta: end_play
+    when: single_scan_status_response.status == 500
+  - name: Prepare status output
+    set_fact:
+      single_scan_status: |
+        {{ single_scan_status_response.json.message }}
+  - name: Check if not all servers can be scanned'
+    when: single_scan_status_response.status == 401
+    slack:
+      token: "{{ slack_token }}"
+      msg: "{{ single_scan_status | trim }}"
+      channel: "{{ slack_channel }}"
+      validate_certs: False
+    environment:
+      http_proxy: "{{ lookup('env', 'PROXY') }}"
+      https_proxy: "{{ lookup('env', 'PROXY') }}"
+  - name: End if not all servers can be scanned
+    when: single_scan_status_response.status == 401
+    meta: end_play
+  - name: End if can't scan response status
+    meta: end_play
+    when: response.status == 500
+  - name: End if can't scan response message
+    meta: end_play
+    when: response.json.message == "no requested hosts could be scheduled for scanning"
+  - name: Scan Status {{ scan_server_ip }}
+    uri:
+      url: "{{ ssrs_api_url }}?ip_addresses={{ scan_server_ip }}"
+      method: GET
+      user: "{{ ssrs_username }}"
+      password: "{{ ssrs_password }}"
+      force_basic_auth: yes
+      validate_certs: no
+      status_code:
+        - 200
+    register: status_response
+    environment:
+      no_proxy: "{{ env_proxy }}"
+    until: status_response.json.data[0]['status'] == "finished"
+    retries: 30
+    delay: 120
+  - name: Prepare status output
+    set_fact:
+      scan_status: |
+        {{ status_response.json.data[0]['status'] }}
+  - name: Send status slack message
+    slack:
+      token: "{{ slack_token }}"
+      msg: "Scan of ip {{ scan_server_ip }} {{ scan_status | trim }}"
+      channel: "{{ slack_channel }}"
+      validate_certs: False
+    environment:
+      http_proxy: "{{ lookup('env', 'PROXY') }}"
+      https_proxy: "{{ lookup('env', 'PROXY') }}"
+  - name: Output vulns {{ scan_server_ip }}
+    uri:
+      url: "{{ ssrs_api_report_url }}?ip_addresses={{ scan_server_ip }}"
+      method: GET
+      headers:
+        Content-Type: application/json
+        Accept: application/json
+      user: "{{ ssrs_username }}"
+      password: "{{ ssrs_password }}"
+      force_basic_auth: yes
+      validate_certs: no
+    register: vuln_response
+    environment:
+      no_proxy: "{{ env_proxy }}"
+  - name: Build output
+    set_fact:
+      vulnerabilities: "{{ vulnerabilities|default({}) | combine( {item.value.ip: item.value.vulnerabilities}) }}"
+    loop: "{{ vuln_response.json.data|dict2items }}"
+  - name: Send status slack message
+    slack:
+      token: "{{ slack_token }}"
+      msg: "Vulnerabilities of {{ scan_server_ip }}:\n{{ vulnerabilities | trim }}"
+      channel: "{{ slack_channel }}"
+      validate_certs: False
+    environment:
+      http_proxy: "{{ lookup('env', 'PROXY') }}"
+      https_proxy: "{{ lookup('env', 'PROXY') }}"
