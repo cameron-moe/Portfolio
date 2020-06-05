@@ -1,3 +1,15 @@
-I have not done an official analysis document before when a system went wrong.  I have, however, had to troubleshoot various systems within SAP Concur during my time here.  One time where I did this was when I was rebuilding our scan engines in the Integrations environment.  I had to use Image Factory to create a custom AMI that would be the base for our scan engines.  I then used a cloud formation template to build Rapid7 scan engines in each environment.  (These engines are used by Security Scanning and Reporting Service to conduct the vulnerability scans).  As I was working in each environment building these engines, I was testing them by building small test boxes (one linux and one windows) to scan.  I realized that in some environments the windows boxes could not be scanned.  After digging into the ports, I realized that the default security group in some Integrations environments did not have the needed ports open for the scan engines to be able to reach the boxes.  This led me to opening especially port 443 on the default security group, which my test boxes were using.  After that, I was able to complete the scans, and now future people who spin up boxes in those environments using the default security group will be able to be scanned by our scanners.
+I have not done an official analysis document before when a system went wrong.  
+I have, however, had to troubleshoot various systems within SAP Concur during my time here.  
+One time where I did this was when I was rebuilding our scan engines in the Integrations environment.  
+I had to use Image Factory to create a custom AMI that would be the base for our scan engines.  
+I then used a cloud formation template to build Rapid7 scan engines in each environment.  
+(These engines are used by Security Scanning and Reporting Service to conduct the vulnerability scans).  
+As I was working in each environment building these engines, I was testing them by building small test boxes 
+(one linux and one windows) to scan.  I realized that in some environments the windows boxes could not be scanned.  
+After digging into the ports, I realized that the default security group in some Integrations environments did not 
+have the needed ports open for the scan engines to be able to reach the boxes.  This led me to opening 
+especially port 443 on the default security group, which my test boxes were using.  
+After that, I was able to complete the scans, and now future people who spin up boxes in those environments
+using the default security group will be able to be scanned by our scanners.
 
 
