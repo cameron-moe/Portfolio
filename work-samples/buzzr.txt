@@ -1,2 +1,3 @@
 https://github.com/blakefuller/buzzr
 
+This is an app that I created with three colleagues at Seattle Pacific University. Our app is a restaurant management system, so users can come in and sign in on an iPad, and be texted when their table is ready.  Specifically, I set up Amazon Pinpoint and SNS to deliver text messages to user.  I wrote the Lambda functions to send a confirmation message when the user arrives, as well as to cancel their reservation if they text back cancel.  I also wrote the ReadMe, showing an example of my documenation creation.  There many other contributions I've made to the app over the last 6 months in the planning and building processes.
